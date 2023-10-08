@@ -1,7 +1,7 @@
 from datetime import datetime
 
 class Logger:
-    def __init__(self, path='.'):
+    def __init__(self, path='./logs/'):
         # Creating the log file where everything will be documented
         time = datetime.now()
         file_name = f"{path}/FlightFinder_" + time.strftime("%d-%m-%Y_%H-%M-%S") + ".log"

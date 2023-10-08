@@ -10,8 +10,8 @@ class Flight_Scrapper:
     def __init__(self, logger):
         # Creating a logger object to write progress
         self.logger = logger
-        self.sleep_time_min = 10
-        self.sleep_time_max = 21
+        self.sleep_time_min = 3
+        self.sleep_time_max = 6
 
         # Creating a web driver to browse the internet
         self.logger.log('Initiating Chrome driver instance')
@@ -19,14 +19,13 @@ class Flight_Scrapper:
         self.current_url = ""
 
         # Parameters and info to do the flight search
-        self.search_modes = {'best':'bestflight', 'cheap':'price', 'quick':'duration'}
-        self.all_field_xpath = {'Wrappers':'//*[@class = "resultWrapper"]',
-                                'Depart_Time':'//*[@class = "section times"]//*[@class = "time-pair"][1]',  #'//*[@class = "depart-time base-time"]',
-                                'Arrival_Time':'//*[@class = "section times"]//*[@class = "time-pair"][2]',  #'//*[@class = "arrival-time base-time"]',
-                                'Stops':'//*[@class = "section stops"]',
-                                'Duration':'//*[@class = "section duration allow-multi-modal-icons"]/*[@class = "top"]',
-                                'Cities':'//*[@class = "section duration allow-multi-modal-icons"]/*[@class = "bottom"]',
-                                'Prices':'//*[@class="price option-text"]'}
+        self.search_modes = {'best':'bestflight_a', 'cheap':'price_a', 'quick':'duration_a'}
+        self.all_field_xpath = {'wrappers':'//*[@class = "nrc6-wrapper"]',
+                                'times':'//*[@class = "vmXl vmXl-mod-variant-large"]',
+                                'stops':'//*[@class = "JWEO"]//*[@class = "JWEO-stops-text"]',
+                                'cities':'//*[@class = "JWEO"]//*[@class = "c_cgF c_cgF-mod-variant-default"]',
+                                'duration':'//*[@class = "xdW8"]//*[@class = "vmXl vmXl-mod-variant-default"]',
+                                'prices':'//*[@class="f8F1-price-text"]'}
 
         self.logger.log('Waiting to make sure driver starts properly, sleeping...')
         sleep(5)
@@ -38,7 +37,7 @@ class Flight_Scrapper:
         self.logger.log('Attempting to load more results...')
 
         try:
-            more_results_xpath = '//a[@class = "moreButton"]'
+            more_results_xpath = '//*[@class = "ULvh-button show-more-button"]'
             self.driver.find_element(By.XPATH, more_results_xpath).click()
 
             self.logger.log('More results loaded, sleeping...')
@@ -47,11 +46,11 @@ class Flight_Scrapper:
             print(e)
             self.logger.log('Something went wrong, could not get more results...')
 
-    def change_mode_with_button(self,mode):
+    def change_mode_with_button(self, mode):
         self.logger.log('Changing to ' + mode + ' mode.')
 
         try:
-            mode_button_xpath = f'//a[@data-code = "{self.search_modes[mode]}"]'
+            mode_button_xpath = f'//*[@data-content = "{self.search_modes[mode]}"]'
             self.driver.find_elements(By.XPATH, mode_button_xpath)[0].click()
 
             self.logger.log(f'{mode} mode active, sleeping...')
@@ -65,7 +64,7 @@ class Flight_Scrapper:
         # Check if user wants to check a mode in particular
         add_mode = ''
         if mode is not None:
-            add_mode = '?sort={self.search_modes[mode]}_a'
+            add_mode = '?sort={self.search_modes[mode]}'
 
         kayak = (f"https://www.kayak.com/flights/{origin}-{destination}/{start_dates}/{end_dates}{add_mode}")
         self.logger.log('Trying to get ' + kayak)
@@ -73,7 +72,6 @@ class Flight_Scrapper:
         try:
             # Getting the website
             self.driver.get(kayak)
-
             self.logger.log('Successfully accessed kayak, sleeping...')
             sleep(randint(self.sleep_time_min, self.sleep_time_max))
         except:
@@ -85,7 +83,7 @@ class Flight_Scrapper:
 
     def get_data(self, xpath):
         results_raw = self.driver.find_elements(By.XPATH, xpath)
-        results_text = [" ".join(result.text.split('\n')) for result in results_raw if result.text != '']
+        results_text = [" ".join(result.text.split('\n')) for result in results_raw ]# result.text != '']
         return results_text
 
     def get_stops_from_wrappers(self, wrappers):
@@ -112,27 +110,30 @@ class Flight_Scrapper:
         prices = []
         wrappers = []
         
-        self.logger.log(f'Getting info from fields: {list(self.all_field_xpath)}')
+        self.logger.log(f'Getting info from fields: {self.all_field_xpath.keys()}')
         for key, val in self.all_field_xpath.items():
             # We dont actually want to process the wrapper so will call the raw method
-            if key == 'Wrappers':
-                wrappers = self.driver.find_elements(By.XPATH, self.all_field_xpath['Wrappers'])
-                wrappers = [x.text for x in wrappers]
+            if key == 'wrappers':
+                wrappers = self.get_raw_data(val)
                 continue
 
-            try:
-                results = self.get_data(val)
-            except Exception as e:
-                self.logger.log('Could not get this data, moving on')
-            
             # Price is the only field that's only one per result
-            if key == 'Prices':
-                prices = results
+            elif key == 'prices':
+                prices = self.get_raw_data(val)
                 continue
+
+            else:
+                try:
+                    results = self.get_data(val)
+                    print(key)
+                    print(results)
+                    print(key)
+                except Exception as e:
+                    self.logger.log('Could not get this data, moving on')
             
             departure_data[key] = results[::2]
             return_data[key] = results[1::2]
-            
+        
         return wrappers, departure_data, return_data, prices
 
     def _display_dic(self, dic):
@@ -167,6 +168,7 @@ class Flight_Scrapper:
                 return_df = pd.DataFrame.from_dict(return_data)
                 full_df = pd.concat([departure_df, return_df], axis=1)
                 self.logger.log('Successfully created dataframe...')
+                
 
             except Exception as e:
                 print(e)
@@ -182,7 +184,7 @@ class Flight_Scrapper:
         
         # Adding the price column
         full_df['Price'] = prices
-        
+        print(full_df)
         return full_df
     
     def get_flights(self, origin, destination, departure_date, return_date, load_attemps=1, modes=['best', 'cheap', 'quick']):
@@ -201,8 +203,8 @@ class Flight_Scrapper:
             self.change_mode_with_button(mode)
 
             # Loading more results +15 results per load approx.
-            for _ in range(load_attemps):
-                self.load_more() 
+            #for _ in range(load_attemps):
+            #    self.load_more() 
 
             # Getting results 
             wrappers, departure_data, return_data, prices = self.get_data_from_all_fields()
