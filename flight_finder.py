@@ -93,8 +93,8 @@ if __name__ == '__main__':
     header = 'This are the top 100 results for your last search!'
     data = flights.head(100).to_html()
 
-    send_flight_email(sender, receivers, header, data)
     try:
+        send_flight_email(sender, receivers, header, data)
         logger.log(f'Flight search result email sent!')
     except:
         logger.log(f'Something went wrong, could not sent information email')
